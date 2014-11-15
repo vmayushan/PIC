@@ -13,35 +13,29 @@ namespace PIC2
         public double X;
 
         /// <summary>
-        /// Конечная энергия
+        /// Энергия в электрон-вольтах
         /// </summary>
         public double W;
 
         /// <summary>
-        /// Конечная приведенная скорость
+        /// Приведенная скорость
         /// </summary>
         public double Beta;
 
         /// <summary>
-        /// E(x), dp/dtau = alfa*E(x)
+        /// Напряженность, действующая на частицу
         /// </summary>
         public double E;
 
         /// <summary>
-        /// "Приведенный" импульс частицы,  dx/dtau = p/sqrt(1+p^2)
+        /// Приведенный импульс, dx/dtau = p/sqrt(1+p^2)
         /// </summary>
         public double P;
-
-        /// <summary>
-        /// Долетела ли частица
-        /// </summary>
-       // public bool Finished;
 
         /// <summary>
         /// Два ближайших узла сетки
         /// </summary>
         public Cell[] near;
-
 
         /// <summary>
         /// Вывод информации о частице

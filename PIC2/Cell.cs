@@ -3,7 +3,7 @@
 namespace PIC2
 {
     /// <summary>
-    /// Класс узла сетки
+    /// Узел сетки
     /// </summary>
     class Cell
     {
@@ -28,7 +28,7 @@ namespace PIC2
         public double X;
 
         /// <summary>
-        /// Вывод информации о ячейке
+        /// Вывод информации об узле
         /// </summary>
         /// <returns></returns>
         public override string ToString()

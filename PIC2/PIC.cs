@@ -69,12 +69,18 @@ namespace PIC2
         /// </summary>
         private TriDiagonalMatrixF poissonMatrix;
 
+        /// <summary>
+        /// Время
+        /// </summary>
         private double t = 0;
 
+        /// <summary>
+        /// Запись в файл, для построения графиков
+        /// </summary>
         private StreamWriter sw = new StreamWriter("debug.csv");
 
         /// <summary>
-        /// Сила тока, формула Чайлда (закон трех вторых)
+        /// Сила тока, формула Чайлда-Ленгмюра (закон трех вторых)
         /// </summary>
         private double I
         {
@@ -92,8 +98,8 @@ namespace PIC2
         /// <summary>
         /// Выпускать ли следующую частицу
         /// </summary>
-        private bool impact = true;
-        private double impactEps = 0.000001;
+        private bool impulse = true;
+        private double impulsetEps = 0.000001;
         private int particleCount = 0;
         private bool warn = true;
 
@@ -175,17 +181,20 @@ namespace PIC2
         public void Run()
         {
             MatrixPoisson();
-
             //время
-
             //переменная для выхода из цикла
             bool work = true;
             //tau = c*t
             double step = Constant.Velocity * stepTime;
             while (work)
             {
+                if (impulse)
+                {
+                    AddParticle();
+                }
                 //пересчет зарядов в ячейках и напряженностей на частицах и добавление частиц
                 RecalculateForces();
+                ImpulseCondition();
 
                 //интегрирование каждой частицы, которая не долетела
                 foreach (var particle in particles)
@@ -193,20 +202,19 @@ namespace PIC2
                     //новая координата X
                     //dx/dtau = p/sqrt(1+p^2)
                     particle.X = particle.X + step * particle.P / Math.Sqrt(1 + particle.P * particle.P);
-
                     particle.Beta = particle.P / Math.Sqrt(1 + particle.P * particle.P);
                     double gamma = 1 / Math.Sqrt(1 - particle.Beta * particle.Beta);
                     particle.W = (-1 / Constant.Alfa) * (gamma - 1);
-                    //новый импульс частицы
-                    //dp/dtau = alfa*E(x)
+                    //dp/dtau = alfa*E(x) новый импульс частицы
                     particle.P = particle.P + step * Constant.Alfa * particle.E;
-                    if(particle.X > length)
-                    {
-                        sw.WriteLine(string.Format("{0:F15};{1:F15}", particle.W,particle.Beta));
-                        sw.Flush();
-                    }
+                    //if (particle.X > length)
+                    //{
+                    //    sw.WriteLine(string.Format("{0:F15};{1:F15}", particle.W, particle.Beta));
+                    //    sw.Flush();
+                    //}
 
                 }
+                //удаление долетевших частиц
                 particles.RemoveAll(x => x.X > length);
                 if (particles.Count() == 0)
                 {
@@ -227,10 +235,7 @@ namespace PIC2
         /// </summary>
         private void RecalculateForces()
         {
-            if (impact)
-            {
-                AddParticle();
-            }
+
 
             //пересчитываем плотности
             //обнуляем плотность по всех ячейках
@@ -294,24 +299,28 @@ namespace PIC2
 
                 }
             }
+            //debug.Add(string.Format("{0:F15}", eСathode.ToString()));
+            //sw.WriteLine(string.Format("{0:F15};{1:F15}", eСathode.ToString(), cells[1].Density));
+            //sw.Flush();
+        }
 
-
-            double newEСathode = cells[75].ElectricFieldParticle + cells[75].ElectricField(0);
+        /// <summary>
+        /// Проверка, нужно ли выпускать новые частицы
+        /// </summary>
+        private void ImpulseCondition ()
+        {
+            double newEСathode = cells[0].ElectricFieldParticle + cells[0].ElectricField(0);
             double deltaE = Math.Abs((newEСathode - eСathode) / newEСathode);
             if (t > tImp)
             {
-                if (impact && deltaE < impactEps)
+                if (impulse && deltaE < impulsetEps)
                 {
                     Console.WriteLine("Установилась напряженность {0}", newEСathode);
-                    impact = false;
+                    impulse = false;
                     Console.WriteLine(particles.Count);
                 }
             }
             this.eСathode = newEСathode;
-            //debug.Add(string.Format("{0:F15}", eСathode.ToString()));
-
-            //sw.WriteLine(string.Format("{0:F15};{1:F15}", eСathode.ToString(), cells[1].Density));
-            //sw.Flush();
         }
 
         #endregion
@@ -343,15 +352,12 @@ namespace PIC2
         /// <returns></returns>
         private double[] Poisson()
         {
-
             double[] B = new double[nCell];
             for (int i = 1; i < nCell - 2; i++)
             {
                 // -p/epsilon0
                 B[i] = -cells[i].Density / Constant.Epsilon;
             }
-
-
             return poissonMatrix.Solve(B);
         }
 
