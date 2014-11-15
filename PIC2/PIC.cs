@@ -46,7 +46,7 @@ namespace PIC2
         /// Шаг сетки
         /// </summary>
         private double gridStep;
-
+        
         /// <summary>
         /// "Тип" для функции напряженности в ячейке
         /// </summary>
@@ -79,6 +79,8 @@ namespace PIC2
         /// </summary>
         private StreamWriter sw = new StreamWriter("debug.csv");
 
+
+
         /// <summary>
         /// Сила тока, формула Чайлда-Ленгмюра (закон трех вторых)
         /// </summary>
@@ -99,10 +101,14 @@ namespace PIC2
         /// Выпускать ли следующую частицу
         /// </summary>
         private bool impulse = true;
-        private double impulsetEps = 0.000001;
+        private double impulsetEps = 0.00001;
         private int particleCount = 0;
         private bool warn = true;
 
+        private Stopwatch densitiesTime = new Stopwatch();
+        private Stopwatch electricFieldTime = new Stopwatch();
+        private Stopwatch forcesTime = new Stopwatch();
+        private Stopwatch integrateTime = new Stopwatch();
 
         #endregion
 
@@ -138,6 +144,8 @@ namespace PIC2
             Console.WriteLine("Работа завершена");
             Console.WriteLine("Время {0}", t);
             Console.WriteLine("Всего частиц выпущено: {0}", particleCount);
+            Console.WriteLine("Время затраченное на интегрирование: {0} мс\n на расчет плотностей зарядов: {1} мс\n на расчет сил: {2} мс\n на расчет собственных напряженностей пучка: {3} мс\n",
+                integrateTime.ElapsedMilliseconds, densitiesTime.ElapsedMilliseconds, forcesTime.ElapsedMilliseconds, electricFieldTime.ElapsedMilliseconds);
         }
         #endregion
 
@@ -188,14 +196,26 @@ namespace PIC2
             double step = Constant.Velocity * stepTime;
             while (work)
             {
-                if (impulse)
-                {
-                    AddParticle();
-                }
+                if (impulse) AddParticle();
+
                 //пересчет зарядов в ячейках и напряженностей на частицах и добавление частиц
-                RecalculateForces();
+                densitiesTime.Start();
+                CalculateDensities();
+                densitiesTime.Stop();
+
+                //собственное поле пучка
+                electricFieldTime.Start();
+                CalculateElectricField();
+                electricFieldTime.Stop();
+
+                // напряженности на частицу
+                forcesTime.Start();
+                CalculateForces();
+                forcesTime.Stop();
+                //проверка условия выпуска новых частиц
                 ImpulseCondition();
 
+                integrateTime.Start();
                 //интегрирование каждой частицы, которая не долетела
                 foreach (var particle in particles)
                 {
@@ -219,11 +239,10 @@ namespace PIC2
                 if (particles.Count() == 0)
                 {
                     work = false;
-                    //double[] potential = Puasson();
-                    //potential.ToList().ForEach(x => debug.Add(string.Format("{0:F15}", x.ToString())));
                 }
                 //добавляем к времени шаг интегрирования
                 t += stepTime;
+                integrateTime.Stop();
             }
         }
 
@@ -231,12 +250,10 @@ namespace PIC2
 
         #region Плотности заряда, CIC
         /// <summary>
-        /// пересчет плотностей зарядов в ячейках и напряженностей на частицах
+        /// Расчет плотностей зарядов
         /// </summary>
-        private void RecalculateForces()
+        private void CalculateDensities()
         {
-
-
             //пересчитываем плотности
             //обнуляем плотность по всех ячейках
             cells.ForEach(x => { x.Density = 0; });
@@ -264,7 +281,13 @@ namespace PIC2
                     }
                 }
             }
+        }
 
+        /// <summary>
+        /// Расчет напряженности собственного поля пучка
+        /// </summary>
+        private void CalculateElectricField()
+        {
             // находим потенциалы
             double[] potential = Poisson();
 
@@ -273,7 +296,13 @@ namespace PIC2
             {
                 cells[i].ElectricFieldParticle = Derivative.DerivativeForward(potential, i, gridStep);
             }
+        }
 
+        /// <summary>
+        /// пересчет напряженностей на частицах
+        /// </summary>
+        private void CalculateForces()
+        {
             // для всех частиц считаем напряженность
             foreach (var particle in particles)
             {
@@ -307,7 +336,7 @@ namespace PIC2
         /// <summary>
         /// Проверка, нужно ли выпускать новые частицы
         /// </summary>
-        private void ImpulseCondition ()
+        private void ImpulseCondition()
         {
             double newEСathode = cells[0].ElectricFieldParticle + cells[0].ElectricField(0);
             double deltaE = Math.Abs((newEСathode - eСathode) / newEСathode);
