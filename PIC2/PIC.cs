@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
 
 namespace PIC2
 {
@@ -46,7 +48,7 @@ namespace PIC2
         /// Шаг сетки
         /// </summary>
         private double gridStep;
-        
+
         /// <summary>
         /// "Тип" для функции напряженности в ячейке
         /// </summary>
@@ -79,7 +81,7 @@ namespace PIC2
         /// </summary>
         private StreamWriter sw = new StreamWriter("debug.csv");
 
-
+        double W = new double();
 
         /// <summary>
         /// Сила тока, формула Чайлда-Ленгмюра (закон трех вторых)
@@ -88,7 +90,7 @@ namespace PIC2
         {
             get
             {
-                return 2.33E-6 * (1 / (length * length)) * Math.Pow(uAnode, 1.5);
+                return  2.33E-6 * (1 / (length * length)) * Math.Pow(uAnode, 1.5);
             }
         }
 
@@ -105,11 +107,15 @@ namespace PIC2
         private int particleCount = 0;
         private bool warn = true;
 
+        private ParticleMethod particleMethod;
+
         private Stopwatch densitiesTime = new Stopwatch();
         private Stopwatch electricFieldTime = new Stopwatch();
         private Stopwatch forcesTime = new Stopwatch();
         private Stopwatch integrateTime = new Stopwatch();
+        private object lockCells = new object();
 
+        public double debugE = 0;
         #endregion
 
         #region Конструктор
@@ -122,7 +128,7 @@ namespace PIC2
         /// <param name="tImp">Время выпуска новых частиц</param>
         /// <param name="uAnode">Напряжение на аноде</param>
         /// <param name="e0">Стартовая энергия частицы (еще не использовал)</param>
-        public ParticleInCell(double length, int nCell, double stepTime, double tImp, double uAnode, double e0)
+        public ParticleInCell(double length, int nCell, double stepTime, double tImp, double uAnode, double e0, ParticleMethod particleMethod)
         {
             this.length = length;
             this.nCell = nCell;
@@ -134,6 +140,7 @@ namespace PIC2
             particles = new List<Particle>((int)(tImp / stepTime) + 1);
             cells = new List<Cell>(nCell);
             AddCells(x => -uAnode / length);
+            this.particleMethod = particleMethod;
         }
 
         /// <summary>
@@ -155,9 +162,11 @@ namespace PIC2
         /// </summary>
         private void AddParticle()
         {
-
-            //создаем новую частицу
-            var particle = new Particle() { X = 0, P = 0 };
+            var particle = new Particle();
+            particle.W = e0;
+            double gamma = 1 - Constant.Alfa * e0;
+            particle.Beta = Math.Sqrt(gamma * gamma - 1) / gamma;
+            particle.P = particle.Beta / Math.Sqrt(1 - particle.Beta * particle.Beta);
             //добавляем в список
             particles.Add(particle);
             particleCount++;
@@ -215,18 +224,23 @@ namespace PIC2
                 //проверка условия выпуска новых частиц
                 ImpulseCondition();
 
+                sw.WriteLine(string.Format("{0:F15};{1:F15}", eСathode.ToString(), cells[0].Density));
+                sw.Flush();
+
                 integrateTime.Start();
                 //интегрирование каждой частицы, которая не долетела
                 foreach (var particle in particles)
                 {
+                    //dp/dtau = alfa*E(x) новый импульс частицы
+                    particle.P = particle.P + step * Constant.Alfa * particle.E;
                     //новая координата X
                     //dx/dtau = p/sqrt(1+p^2)
                     particle.X = particle.X + step * particle.P / Math.Sqrt(1 + particle.P * particle.P);
                     particle.Beta = particle.P / Math.Sqrt(1 + particle.P * particle.P);
                     double gamma = 1 / Math.Sqrt(1 - particle.Beta * particle.Beta);
                     particle.W = (-1 / Constant.Alfa) * (gamma - 1);
-                    //dp/dtau = alfa*E(x) новый импульс частицы
-                    particle.P = particle.P + step * Constant.Alfa * particle.E;
+
+
                     //if (particle.X > length)
                     //{
                     //    sw.WriteLine(string.Format("{0:F15};{1:F15}", particle.W, particle.Beta));
@@ -257,28 +271,25 @@ namespace PIC2
             //пересчитываем плотности
             //обнуляем плотность по всех ячейках
             cells.ForEach(x => { x.Density = 0; });
+
             foreach (var particle in particles)
             {
                 particle.E = 0;
-                //ищем две ближайшие ячейки как |x-Xp| < Шага сетки изменяем
-                particle.near = cells.Where(p => Math.Abs(particle.X - p.X) <= gridStep).ToArray();
-                // CIC
-                double[] W = particle.near.Select(p => (1 - Math.Abs(particle.X - p.X) / gridStep)).ToArray();
 
-                if (particle.near[0].X == 0.0)
+                if (particleMethod == ParticleMethod.CIC)
                 {
-                    cells[1].Density += I * stepTime / gridStep; //q/h NGP
-                }
-                else if (particle.near.Length == 2 && particle.near[1].X == length)
-                {
-                    cells[nCell - 2].Density += I * stepTime / gridStep;
-                }
-                else
-                {
+                    //CIC
+                    particle.near = cells.Where(p => Math.Abs(particle.X - p.X) <= gridStep).ToArray();
                     for (int i = 0; i < particle.near.Length; i++)
                     {
-                        particle.near[i].Density += I * stepTime * W[i] / gridStep; //q*Wi/h CIC
+                        W = 1 - Math.Abs(particle.X - particle.near[i].X) / gridStep;
+                        particle.near[i].Density += I * stepTime * W / gridStep; //q*Wi/h CIC
                     }
+                }
+                else if (particleMethod == ParticleMethod.NGP)
+                {
+                    particle.NGP = cells.Where(p => Math.Abs(particle.X - p.X) <= gridStep).OrderBy(p => Math.Abs(particle.X - p.X)).First();
+                    particle.NGP.Density += I * stepTime / gridStep; //q/h NGP
                 }
             }
         }
@@ -294,7 +305,18 @@ namespace PIC2
             //считаем разностные производные
             for (int i = 0; i < nCell - 1; i++)
             {
-                cells[i].ElectricFieldParticle = Derivative.DerivativeForward(potential, i, gridStep);
+                if (i == 0)
+                {
+                    cells[i].ElectricFieldParticle = Derivative.DerivativeForward(potential, i, gridStep);
+                }
+                else if (i == nCell - 1)
+                {
+                    cells[i].ElectricFieldParticle = Derivative.DerivativeBackward1(potential, i, gridStep);
+                }
+                else
+                {
+                    cells[i].ElectricFieldParticle = Derivative.DerivativeCentral1(potential, i, gridStep);
+                }
             }
         }
 
@@ -306,20 +328,20 @@ namespace PIC2
             // для всех частиц считаем напряженность
             foreach (var particle in particles)
             {
-                double[] W = particle.near.Select(p => (1 - Math.Abs(particle.X - p.X) / gridStep)).ToArray();
-                if (particle.near[0].X == 0.0)
-                {
-                    particle.E += (particle.near[1].ElectricField(particle.X) + particle.near[1].ElectricFieldParticle);
-                }
-                else
+
+                if (particleMethod == ParticleMethod.CIC)
                 {
                     for (int i = 0; i < particle.near.Length; i++)
                     {
                         //потенциал поля + потенциал поля пучка
-                        particle.E += (particle.near[i].ElectricField(particle.X) + particle.near[i].ElectricFieldParticle) * W[i];
+                        W = 1 - Math.Abs(particle.X - particle.near[i].X) / gridStep;
+                        particle.E += (particle.near[i].ElectricField(particle.X) + particle.near[i].ElectricFieldParticle) * W;
                     }
                 }
-
+                else if (particleMethod == ParticleMethod.NGP)
+                {
+                    particle.E += (particle.NGP.ElectricField(particle.X) + particle.NGP.ElectricFieldParticle);
+                }
                 if (warn && particle.E > 0)
                 {
 
@@ -328,9 +350,7 @@ namespace PIC2
 
                 }
             }
-            //debug.Add(string.Format("{0:F15}", eСathode.ToString()));
-            //sw.WriteLine(string.Format("{0:F15};{1:F15}", eСathode.ToString(), cells[1].Density));
-            //sw.Flush();
+
         }
 
         /// <summary>
@@ -345,6 +365,7 @@ namespace PIC2
                 if (impulse && deltaE < impulsetEps)
                 {
                     Console.WriteLine("Установилась напряженность {0}", newEСathode);
+                    debugE = newEСathode / cells[0].ElectricField(0);
                     impulse = false;
                     Console.WriteLine(particles.Count);
                 }

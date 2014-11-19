@@ -37,6 +37,8 @@ namespace PIC2
         /// </summary>
         public Cell[] near;
 
+        public Cell NGP;
+
         /// <summary>
         /// Вывод информации о частице
         /// </summary>

@@ -31,4 +31,9 @@ namespace PIC2
         /// </summary>
         public const double Alfa = -1.9569512693314196E-6;
     }
+    public enum ParticleMethod
+    {
+        NGP,
+        CIC
+    }
 }
