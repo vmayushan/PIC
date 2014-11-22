@@ -28,6 +28,7 @@ namespace PIC2
         /// Шаг интегрирования
         /// </summary>
         private double stepTime;
+        private double dt;
 
         /// <summary>
         /// Время "выпуска" новых частиц
@@ -40,9 +41,14 @@ namespace PIC2
         private double uAnode;
 
         /// <summary>
-        /// Стартовая энергия частицы (еще не использовал)
+        /// Стартовая энергия частицы
         /// </summary>
         private double e0;
+
+        /// <summary>
+        /// Стартовый импульс
+        /// </summary>
+        private double p0;
 
         /// <summary>
         /// Шаг сетки
@@ -90,7 +96,7 @@ namespace PIC2
         {
             get
             {
-                return  2.33E-6 * (1 / (length * length)) * Math.Pow(uAnode, 1.5);
+                return 2.33E-6 * (1 / (length * length)) * Math.Pow(uAnode, 1.5);
             }
         }
 
@@ -141,6 +147,11 @@ namespace PIC2
             cells = new List<Cell>(nCell);
             AddCells(x => -uAnode / length);
             this.particleMethod = particleMethod;
+            this.dt = Constant.Velocity * stepTime;
+
+            double gamma = 1 - Constant.Alfa * e0;
+            double beta = Math.Sqrt(gamma * gamma - 1) / gamma;
+            this.p0 = beta / Math.Sqrt(1 - beta * beta);
         }
 
         /// <summary>
@@ -163,15 +174,11 @@ namespace PIC2
         private void AddParticle()
         {
             var particle = new Particle();
-            particle.W = e0;
-            double gamma = 1 - Constant.Alfa * e0;
-            particle.Beta = Math.Sqrt(gamma * gamma - 1) / gamma;
-            particle.P = particle.Beta / Math.Sqrt(1 - particle.Beta * particle.Beta);
-            //добавляем в список
+            particle.P = p0;
             particles.Add(particle);
             particleCount++;
-            //Console.WriteLine("Добавлена {0}", particle);
         }
+
 
         /// <summary>
         /// Добавляет ячейки с заданной напряженность
@@ -201,26 +208,11 @@ namespace PIC2
             //время
             //переменная для выхода из цикла
             bool work = true;
-            //tau = c*t
-            double step = Constant.Velocity * stepTime;
             while (work)
             {
                 if (impulse) AddParticle();
 
-                //пересчет зарядов в ячейках и напряженностей на частицах и добавление частиц
-                densitiesTime.Start();
-                CalculateDensities();
-                densitiesTime.Stop();
-
-                //собственное поле пучка
-                electricFieldTime.Start();
-                CalculateElectricField();
-                electricFieldTime.Stop();
-
-                // напряженности на частицу
-                forcesTime.Start();
-                CalculateForces();
-                forcesTime.Stop();
+                Forces();
                 //проверка условия выпуска новых частиц
                 ImpulseCondition();
 
@@ -231,22 +223,14 @@ namespace PIC2
                 //интегрирование каждой частицы, которая не долетела
                 foreach (var particle in particles)
                 {
-                    //dp/dtau = alfa*E(x) новый импульс частицы
-                    particle.P = particle.P + step * Constant.Alfa * particle.E;
-                    //новая координата X
-                    //dx/dtau = p/sqrt(1+p^2)
-                    particle.X = particle.X + step * particle.P / Math.Sqrt(1 + particle.P * particle.P);
-                    particle.Beta = particle.P / Math.Sqrt(1 + particle.P * particle.P);
-                    double gamma = 1 / Math.Sqrt(1 - particle.Beta * particle.Beta);
-                    particle.W = (-1 / Constant.Alfa) * (gamma - 1);
 
-
-                    //if (particle.X > length)
-                    //{
-                    //    sw.WriteLine(string.Format("{0:F15};{1:F15}", particle.W, particle.Beta));
-                    //    sw.Flush();
-                    //}
-
+                    
+                    if(particle.X == 0.0)
+                        particle.P = particle.P + 0.5 * dt * Constant.Alfa * particle.E;
+                    else
+                        particle.P = particle.P + dt * Constant.Alfa * particle.E;
+                    particle.X = particle.X + dt * particle.Beta;
+                    
                 }
                 //удаление долетевших частиц
                 particles.RemoveAll(x => x.X > length);
@@ -260,6 +244,23 @@ namespace PIC2
             }
         }
 
+        private void Forces()
+        {
+            //пересчет зарядов в ячейках и напряженностей на частицах и добавление частиц
+            densitiesTime.Start();
+            CalculateDensities();
+            densitiesTime.Stop();
+
+            //собственное поле пучка
+            electricFieldTime.Start();
+            CalculateElectricField();
+            electricFieldTime.Stop();
+
+            // напряженности на частицу
+            forcesTime.Start();
+            CalculateForces();
+            forcesTime.Stop();
+        }
         #endregion
 
         #region Плотности заряда, CIC

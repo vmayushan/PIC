@@ -15,12 +15,25 @@ namespace PIC2
         /// <summary>
         /// Энергия в электрон-вольтах
         /// </summary>
-        public double W;
+        public double W
+        {
+            get
+            {
+                double gamma = 1 / Math.Sqrt(1 - Beta * Beta);
+                return (-1 / Constant.Alfa) * (gamma - 1);
+            }
+        }
 
         /// <summary>
         /// Приведенная скорость
         /// </summary>
-        public double Beta;
+        public double Beta
+        {
+            get
+            {
+                return P / Math.Sqrt(1 + P * P);
+            }
+        }
 
         /// <summary>
         /// Напряженность, действующая на частицу

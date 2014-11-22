@@ -14,7 +14,7 @@ namespace PIC2
 
             var time = new Stopwatch();
             time.Start();
-            var pic = new ParticleInCell(0.015, 200, 1E-11, 2E-8, 12000, 0, ParticleMethod.CIC);
+            var pic = new ParticleInCell(0.015, 200, 1E-11, 3E-8, 12000, 0, ParticleMethod.CIC);
             pic.Run();
             pic.Report();
             time.Stop();
