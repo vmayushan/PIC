@@ -52,6 +52,8 @@ namespace PIC2
 
         public Cell NGP;
 
+        public bool First = true;
+
         /// <summary>
         /// Вывод информации о частице
         /// </summary>
