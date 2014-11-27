@@ -52,6 +52,11 @@ namespace PIC2
 
         public Cell NGP;
 
+        /// <summary>
+        /// Заряд частицы
+        /// </summary>
+        public double Q;
+
         public bool First = true;
 
         /// <summary>

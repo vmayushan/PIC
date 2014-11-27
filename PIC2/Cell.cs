@@ -7,6 +7,10 @@ namespace PIC2
     /// </summary>
     class Cell
     {
+        public Cell(PIC2.ParticleInCell.Function electricField)
+        {
+            this.electricField = electricField;
+        }
         /// <summary>
         /// Плотность заряда
         /// </summary>
@@ -15,12 +19,12 @@ namespace PIC2
         /// <summary>
         /// Напряженность
         /// </summary>
-        public PIC2.ParticleInCell.Function ElectricField;
+        private PIC2.ParticleInCell.Function electricField;
 
         /// <summary>
         /// Напряженность пучка
         /// </summary>
-        public double ElectricFieldParticle;
+        private double electricFieldParticle;
 
         /// <summary>
         /// Координата узла сетки
@@ -34,6 +38,20 @@ namespace PIC2
         public override string ToString()
         {
             return String.Format("Узел сетки X={0,7}", X);
+        }
+
+        /// <summary>
+        /// Суммая напряженность
+        /// </summary>
+        /// <param name="x">x</param>
+        /// <returns></returns>
+        public double GetE(int x = 0)
+        {
+            return electricField(x) + electricFieldParticle;
+        }
+        public void SetElectricFieldParticle(double electricField)
+        {
+            electricFieldParticle = electricField;
         }
     }
 }
