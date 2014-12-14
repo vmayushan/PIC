@@ -120,6 +120,7 @@ namespace PIC2
         private Stopwatch integrateTime = new Stopwatch();
 
         private int iterations = 0;
+
         #endregion
 
         #region Конструктор
@@ -226,7 +227,20 @@ namespace PIC2
                     currentCathode = AddParticle();
                 }
                 ImpulseCondition();
-                Forces();
+
+                densitiesTime.Start();
+                CalculateDensities();
+                densitiesTime.Stop();
+
+                //собственное поле пучка
+                electricFieldTime.Start();
+                CalculateElectricField();
+                electricFieldTime.Stop();
+
+                // напряженности на частицу
+                forcesTime.Start();
+                CalculateForces();
+                forcesTime.Stop();
 
                 #region Интегрирование
                 integrateTime.Start();
@@ -265,23 +279,6 @@ namespace PIC2
             }
         }
 
-        private void Forces()
-        {
-            //пересчет зарядов в ячейках и напряженностей на частицах и добавление частиц
-            densitiesTime.Start();
-            CalculateDensities();
-            densitiesTime.Stop();
-
-            //собственное поле пучка
-            electricFieldTime.Start();
-            CalculateElectricField();
-            electricFieldTime.Stop();
-
-            // напряженности на частицу
-            forcesTime.Start();
-            CalculateForces();
-            forcesTime.Stop();
-        }
         #endregion
 
         #region Плотности заряда, CIC
@@ -332,22 +329,26 @@ namespace PIC2
         {
             // находим потенциалы
             double[] potential = Poisson();
-
             //считаем разностные производные
             for (int i = 0; i < nCell - 1; i++)
             {
-                if (i == 0)
-                {
-                    cells[i].SetElectricFieldParticle(-Derivative.DerivativeForward(potential, i, gridStep));
-                }
-                else if (i == nCell - 1)
-                {
-                    cells[i].SetElectricFieldParticle(-Derivative.DerivativeBackward1(potential, i, gridStep));
-                }
-                else
-                {
-                    cells[i].SetElectricFieldParticle(-Derivative.DerivativeCentral1(potential, i, gridStep));
-                }
+                //if (i == 0)
+                //{
+                //    cells[i].SetElectricFieldParticle(-Derivative.DerivativeForward1(potential, i, gridStep));
+                //    //cells[i].SetElectricFieldParticle(-Derivative.DerivativeRichardson1(potential, i, gridStep,"Forward"));
+                //}
+                //else if (i == nCell - 1)
+                //{
+                //    cells[i].SetElectricFieldParticle(-Derivative.DerivativeBackward1(potential, i, gridStep));
+                //    //cells[i].SetElectricFieldParticle(-Derivative.DerivativeRichardson1(potential, i, gridStep, "Backward"));
+
+                //}
+                //else
+                //{
+                //    //cells[i].SetElectricFieldParticle(-Derivative.DerivativeCentral1(potential, i, gridStep));
+                //    cells[i].SetElectricFieldParticle(-Derivative.DerivativeRichardson1(potential, i, gridStep, "Central"));
+                //}
+                cells[i].SetElectricFieldParticle(-Derivative.Central(potential, i, gridStep));
 
             }
         }
@@ -361,19 +362,49 @@ namespace PIC2
             // для всех частиц считаем напряженность
             foreach (var particle in particles)
             {
+                //жесть
+                int leftCell;
+                double deltaX = particle.X - gridStep / 2;
+                if (deltaX < 0)
+                {
+                    leftCell = -1;
+                    particle.near = new Cell[] { null, cells[leftCell + 1] };
+                }
+                else
+                {
+                    leftCell = (int)(deltaX / gridStep);
+                    if (leftCell == nCell - 2)
+                    {
+                        particle.near = new Cell[] { cells[leftCell], null };
+                    }
+                    else
+                    {
+                        particle.near = new Cell[] { cells[leftCell], cells[leftCell + 1] };
+                    }
+                }
 
                 if (particleMethod == ParticleMethod.CIC)
                 {
                     for (int i = 0; i < particle.near.Length; i++)
                     {
                         //потенциал поля + потенциал поля пучка
-                        W = 1 - Math.Abs(particle.X - particle.near[i].X) / gridStep;
-                        double electricField = particle.near[i].GetE();
-                        if (electricField > 0)
+                        if (particle.near[i] != null)
                         {
-                            electricField = 0;
+                            W = 1 - Math.Abs((particle.X - gridStep / 2) - particle.near[i].X) / gridStep;
+                            //жесть #2
+
+                            if (W < 0 || W > 1)
+                            {
+                                throw new ApplicationException();
+                            }
+
+                            double electricField = particle.near[i].GetE();
+                            if (electricField > 0)
+                            {
+                                electricField = 0;
+                            }
+                            particle.E += electricField * W;
                         }
-                        particle.E += electricField * W;
                     }
                 }
                 else if (particleMethod == ParticleMethod.NGP)
@@ -391,8 +422,8 @@ namespace PIC2
 
         private double GetCurrentEmission()
         {
-
             return (cells[0].GetE() * Constant.Epsilon - cells[0].Density * gridStep);
+            //return (cells[0].GetE() * Constant.Epsilon - cells[0].Density * gridStep);
         }
 
         /// <summary>
@@ -405,8 +436,8 @@ namespace PIC2
                 if (impulse && Math.Abs((cells[0].GetE() - eСathode) / cells[0].GetE()) < impulsetEps)
                 {
                     Console.WriteLine("Установилась напряженность {0}", cells[0].GetE());
-                    Console.WriteLine("Ток: {0}",Math.Abs(currentCathode));
-                    Console.WriteLine("Ток по закону Чайлда-Ленгюмюра: {0}\n",ChildLangmuirCurrent);
+                    Console.WriteLine("Ток: {0}", Math.Abs(currentCathode));
+                    Console.WriteLine("Ток по закону Чайлда-Ленгюмюра: {0}\n", ChildLangmuirCurrent);
                     impulse = false;
                 }
             }

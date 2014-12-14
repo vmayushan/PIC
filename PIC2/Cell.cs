@@ -19,7 +19,7 @@ namespace PIC2
         /// <summary>
         /// Напряженность
         /// </summary>
-        private PIC2.ParticleInCell.Function electricField;
+        public PIC2.ParticleInCell.Function electricField;
 
         /// <summary>
         /// Напряженность пучка
